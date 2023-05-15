@@ -17,6 +17,11 @@ typedef enum : NSUInteger {
     WLFileDownloadStatusCanceled
 } WLFileDownloadStatus;
 
+typedef enum : NSUInteger {
+    WLFileDownloadPriorityLow,
+    WLFileDownloadPriorityHigh,
+} WLFileDownloadPriority;
+
 NS_ASSUME_NONNULL_BEGIN
 
 @interface WLDownloadAction : NSObject
@@ -25,6 +30,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic ,strong) WLDownloadItem *downloadItem;
 @property (nonatomic ,assign) WLFileDownloadStatus downloadStatus;
 @property (nonatomic ,assign) float progress;
+@property (nonatomic ,assign) WLFileDownloadPriority priority; // 默认high
+
 @end
 
 NS_ASSUME_NONNULL_END

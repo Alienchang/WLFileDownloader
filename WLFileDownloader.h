@@ -19,6 +19,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)appendAction:(WLDownloadAction *)action;
 - (void)cancelAction:(WLDownloadAction *)action;
 - (void)beginDownload;
+
++ (NSString *)localPathWithUrl:(NSString *)remoteUrl;
 @end
 
 NS_ASSUME_NONNULL_END

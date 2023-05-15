@@ -12,7 +12,17 @@
 - (instancetype)initWithDownloadItem:(WLDownloadItem *)downloadItem {
     if (self = [super init]) {
         self.downloadItem = downloadItem;
+        self.priority = WLFileDownloadPriorityHigh;
     }
     return self;
+}
+
+- (BOOL)isEqual:(WLDownloadAction *)object {
+    if ([self.downloadItem.url isEqualToString:object.downloadItem.url] &&
+        object.downloadCallBack == self.downloadCallBack) {
+        return YES;
+    } else {
+        return NO;
+    }
 }
 @end

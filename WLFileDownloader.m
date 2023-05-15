@@ -9,16 +9,13 @@
 #import "WLFileDownloader.h"
 #import <VComponents/NSFileManager+AICategory.h>
 
+static NSString *cachePath = nil;
+
 @interface WLFileDownloader()
 @property (nonatomic ,strong) NSMutableArray <WLDownloadAction *>*waitActions;
-@property (nonatomic ,strong) NSMutableArray <WLDownloadAction *>*inActions;
-
-@property (nonatomic ,strong) NSLock *appendLock;
-@property (nonatomic ,strong) NSLock *removeLock;
-@property (nonatomic ,strong) NSLock *lock;
-
 @property (nonatomic ,strong) NSCache *cache;
 @property (nonatomic ,strong) dispatch_queue_t downloadOperationQueue;
+@property (nonatomic ,assign) NSInteger currentTaskCount;
 @end
 
 @implementation WLFileDownloader
@@ -29,7 +26,7 @@
     static dispatch_once_t oncePredicate;
     dispatch_once(&oncePredicate, ^{
         downloader = [[WLFileDownloader alloc] init];
-        downloader.maxTaskLimit = 3;
+        downloader.maxTaskLimit = 8;
         downloader.downloadOperationQueue = dispatch_queue_create("com.wl.downloader", DISPATCH_QUEUE_SERIAL);
 //        DISPATCH_QUEUE_SERIAL
 //        DISPATCH_QUEUE_CONCURRENT
@@ -39,7 +36,24 @@
 
 - (void)appendAction:(WLDownloadAction *)action {
     dispatch_async(self.downloadOperationQueue, ^{
-        [self.waitActions addObject:action];
+        if (!action.downloadCallBack) {
+            NSURL *url = [NSURL URLWithString:action.downloadItem.url];
+            NSString *fileName = [url lastPathComponent];
+            NSString *filePath = [self.class.downloadPath stringByAppendingFormat:@"/%@",fileName];
+            if ([NSFileManager fileExistsAtPath:filePath]) {
+                return;
+            }
+        }
+        
+        if ([self.waitActions containsObject:action]) {
+            return;
+        }
+        
+        if (action.priority == WLFileDownloadPriorityLow) {
+            [self.waitActions addObject:action];
+        } else {
+            [self.waitActions insertObject:action atIndex:0];
+        }
     });
 }
 
@@ -50,39 +64,35 @@
 }
 
 - (void)finishAction:(WLDownloadAction *)action {
-    dispatch_async(self.downloadOperationQueue, ^{
-        [self actionCallBack:action];
-        [self.inActions removeObject:action];
-    });
+    self.currentTaskCount --;
+    [self actionCallBack:action];
 }
 
 - (void)beginDownload {
     dispatch_async(self.downloadOperationQueue, ^{
-        
         if (!self.waitActions.count) {
             return;
         }
         
-        NSInteger i = self.inActions.count;
-        NSInteger count = 0;
-        for (WLDownloadAction *action in self.waitActions) {
-            action.downloadStatus = WLFileDownloadStatusIn;
-            [self.inActions addObject:action];
-            ++i;
-            ++count;
-            if (i >= self.maxTaskLimit) {
-                break;
-            }
+        NSMutableArray *inAction = [NSMutableArray new];
+        NSInteger needActionCount = self.maxTaskLimit - self.currentTaskCount;
+        if (self.waitActions.count <= needActionCount) {
+            [inAction addObjectsFromArray:self.waitActions];
+        } else {
+            [inAction addObjectsFromArray:[self.waitActions subarrayWithRange:NSMakeRange(0, needActionCount - 1)]];
         }
-        [self.waitActions removeObjectsInRange:NSMakeRange(0, count)];
-        
-        for (WLDownloadAction *action in self.inActions) {
+        NSLog(@"当前下载数量 = %@",@(self.waitActions.count));
+        for (WLDownloadAction *action in inAction) {
+            self.currentTaskCount ++;
+            WLDownloadAction *action = self.waitActions.firstObject;
+            [self.waitActions removeObjectAtIndex:0];
+            
             if (action.downloadItem.url.length) {
                 [self actionCallBack:action];
                 
                 NSURL *url = [NSURL URLWithString:action.downloadItem.url];
                 NSString *fileName = [url lastPathComponent];
-                NSString *filePath = [self.downloadPath stringByAppendingFormat:@"/%@",fileName];
+                NSString *filePath = [self.class.downloadPath stringByAppendingFormat:@"/%@",fileName];
                 NSData *animationMemoryData = [self.cache objectForKey:action.downloadItem.url];
                 if (animationMemoryData) {
                     action.downloadStatus = WLFileDownloadStatusSuccess;
@@ -94,8 +104,10 @@
                     action.downloadItem.localUrl = filePath;
                     if (action.downloadItem.useCache) {
                         NSData *data = [NSData dataWithContentsOfFile:filePath];
-                        [self.cache setObject:data forKey:action.downloadItem.url];
-                        action.downloadItem.data = data;
+                        if (data) {
+                            [self.cache setObject:data forKey:action.downloadItem.url];
+                            action.downloadItem.data = data;
+                        }
                     }
                     [self finishAction:action];
                     [self beginDownload];
@@ -138,6 +150,17 @@
     });
 }
 
++ (NSString *)localPathWithUrl:(NSString *)remoteUrl {
+    NSURL *url = [NSURL URLWithString:remoteUrl];
+    NSString *fileName = [url lastPathComponent];
+    NSString *filePath = [self.downloadPath stringByAppendingFormat:@"/%@",fileName];
+    if ([NSFileManager fileExistsAtPath:filePath]) {
+        return filePath;
+    } else {
+        return nil;
+    }
+}
+
 #pragma mark -- private func
 - (void)actionCallBack:(WLDownloadAction *)action {
     if (action.downloadCallBack) {
@@ -146,13 +169,6 @@
 }
 
 #pragma mark -- getter
-- (NSMutableArray <WLDownloadAction *>*)inActions {
-    if (!_inActions) {
-        _inActions = [NSMutableArray new];
-    }
-    return _inActions;
-}
-
 - (NSMutableArray <WLDownloadAction *>*)waitActions {
     if (!_waitActions) {
         _waitActions = [NSMutableArray new];
@@ -160,35 +176,14 @@
     return _waitActions;
 }
 
-- (NSLock *)appendLock {
-    if (!_appendLock) {
-        _appendLock = [NSLock new];
-    }
-    return _appendLock;
-}
-
-- (NSLock *)removeLock {
-    if (!_removeLock) {
-        _removeLock = [NSLock new];
-    }
-    return _removeLock;
-}
-
-- (NSLock *)lock {
-    if (!_lock) {
-        _lock = [NSLock new];
-    }
-    return _lock;
-}
-
-- (NSString *)downloadPath {
-    if (!_downloadPath) {
++ (NSString *)downloadPath {
+    if (!cachePath) {
         NSString *document = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) lastObject];
-        NSString *downloadPath = [document stringByAppendingString:@"/download"];
-        _downloadPath = downloadPath;
-        [NSFileManager createDirectory:downloadPath];
+        NSString *path = [document stringByAppendingString:@"/download"];
+        [NSFileManager createDirectory:path];
+        cachePath = path;
     }
-    return _downloadPath;
+    return cachePath;
 }
 
 - (NSCache *)cache {
