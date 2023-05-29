@@ -36,6 +36,9 @@ static NSString *cachePath = nil;
 
 - (void)appendAction:(WLDownloadAction *)action {
     dispatch_async(self.downloadOperationQueue, ^{
+        if ([self.waitActions containsObject:action]) {
+            return;
+        }
         if (!action.downloadCallBack) {
             NSURL *url = [NSURL URLWithString:action.downloadItem.url];
             NSString *fileName = [url lastPathComponent];
@@ -76,6 +79,9 @@ static NSString *cachePath = nil;
         
         NSMutableArray *inAction = [NSMutableArray new];
         NSInteger needActionCount = self.maxTaskLimit - self.currentTaskCount;
+        if (needActionCount == 0) {
+            return;
+        }
         if (self.waitActions.count <= needActionCount) {
             [inAction addObjectsFromArray:self.waitActions];
         } else {
