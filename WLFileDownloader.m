@@ -7,7 +7,6 @@
 //
 
 #import "WLFileDownloader.h"
-#import <VComponents/NSFileManager+AICategory.h>
 
 static NSString *cachePath = nil;
 
@@ -43,7 +42,7 @@ static NSString *cachePath = nil;
             NSURL *url = [NSURL URLWithString:action.downloadItem.url];
             NSString *fileName = [url lastPathComponent];
             NSString *filePath = [self.class.downloadPath stringByAppendingFormat:@"/%@",fileName];
-            if ([NSFileManager fileExistsAtPath:filePath]) {
+            if ([self.class fileExistsAtPath:filePath]) {
                 return;
             }
         }
@@ -105,7 +104,7 @@ static NSString *cachePath = nil;
                     action.downloadItem.data = animationMemoryData;
                     [self finishAction:action];
                     [self beginDownload];
-                } else if ([NSFileManager fileExistsAtPath:filePath]) {
+                } else if ([self.class fileExistsAtPath:filePath]) {
                     action.downloadStatus = WLFileDownloadStatusSuccess;
                     action.downloadItem.localUrl = filePath;
                     if (action.downloadItem.useCache) {
@@ -160,7 +159,7 @@ static NSString *cachePath = nil;
     NSURL *url = [NSURL URLWithString:remoteUrl];
     NSString *fileName = [url lastPathComponent];
     NSString *filePath = [self.downloadPath stringByAppendingFormat:@"/%@",fileName];
-    if ([NSFileManager fileExistsAtPath:filePath]) {
+    if ([self fileExistsAtPath:filePath]) {
         return filePath;
     } else {
         return nil;
@@ -186,7 +185,7 @@ static NSString *cachePath = nil;
     if (!cachePath) {
         NSString *document = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) lastObject];
         NSString *path = [document stringByAppendingString:@"/download"];
-        [NSFileManager createDirectory:path];
+        [self createDirectory:path];
         cachePath = path;
     }
     return cachePath;
@@ -198,5 +197,27 @@ static NSString *cachePath = nil;
         _cache.countLimit = 10;
     }
     return _cache;
+}
+
+#pragma mark -- FileManager
++ (BOOL)fileExistsAtPath:(NSString *)filePath {
+    return [[NSFileManager defaultManager] fileExistsAtPath:filePath];
+}
++ (BOOL)createDirectory:(NSString*)directory {
+    BOOL success = NO;
+    NSFileManager *fileMgr = [NSFileManager defaultManager];    //
+    BOOL isDirectory = NO;
+    if([fileMgr fileExistsAtPath:directory isDirectory:&isDirectory]) {
+        success = YES;
+    } else {
+        NSError *error = nil;
+        success = [fileMgr createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:&error];
+        if(success) {
+            //NSLog(@"==== (%@) create succeed ====",folder);
+        } else {
+            //NSLog(@"==== (%@) create failed %@ ====",folder,error);
+        }
+    }
+    return success;
 }
 @end
